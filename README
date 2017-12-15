@@ -1,0 +1,31 @@
+
+                             Phloem MPI Benchmarks
+                                 Version 1.4.0
+
+================================================================================
+This is a package containing three MPI benchmarks intended for use during
+LLNL system procurement.
+
+Each of the three benchmarks in located in a separate directory and includes
+a README file describing the benchmark.
+
+For point-to-point bandwidth and latency benchmarks, please see the presta/com
+benchmark.
+
+For messaging rate, please see the sqmr benchmark.
+
+For collective latencies, please see the mpiBench benchmark.
+
+The benchmarks should be built by modifying the top-level Makefile.inc file
+to provide the appropriate compiler, linker, and flags and running 'make'.
+
+Please send questions or comments to Chris Chambreau (chambreau1@llnl.gov).
+
+================================================================================
+  LLNL Release Information
+--------------------------------------------------------------------------------
+Sequoia MPI Benchmark Suite Framework
+Published 1/15/08
+by Chris Chambreau (chcham@llnl.gov)
+Lawrence Livermore National Laboratory
+Release number LLNL-MI-400479

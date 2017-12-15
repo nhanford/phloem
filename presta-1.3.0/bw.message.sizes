@@ -1,0 +1,30 @@
+#  Source file of Message Sizes and test iterations in between time samples
+#
+#  Column 1 : Message size
+#  Column 2 : Number of operations
+#
+#
+0        10000
+8        1000
+16       1000
+32       1000
+64       1000
+128      1000
+256      1000
+512      1000
+1024     1000
+2048      500
+4096      500
+8192      500
+16384     500
+32768     500
+65536     100
+131072    100
+262144    100
+524288    100
+1048576    10
+2097152    10 
+4194304    5
+8388608    5
+16777216   5
+33554432   5

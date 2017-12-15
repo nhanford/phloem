@@ -1,0 +1,23 @@
+==========================
+mpiGraph Distribution v1.5
+==========================
+
+This package contains two benchmarks:
+  mpiBench -- times MPI collectives over a series of message sizes
+  mpiGraph -- stresses network and generates bandwidth image
+
+Respective README files in each directory describe the usage of each
+benchmark.
+
+To quickly build both benchmarks:
+  make
+
+To quickly clean both:
+  make clean
+
+To produce a tarball containing both:
+  make tar
+
+==========================
+Adam Moody <moody20@llnl.gov>
+==========================
