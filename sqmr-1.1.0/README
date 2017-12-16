@@ -1,6 +1,6 @@
 
                      SQMR : Sequoia Message Rate Benchmark
-                                  Version 1.0
+                                  Version 1.1
 
                                by Andrew Friedley
 
@@ -30,6 +30,5 @@ Parameter key:
                 min_msgsize, and then doubles the size repeatedly until
                 max_msgsize is reached.
 
-Please address comments or questions to Chris Chambreau (chcham@llnl.gov) or
-Matt Leininger (leininger4@llnl.gov).
+Please address comments or questions to Chris Chambreau (chambreau1@llnl.gov)
 
