@@ -57,7 +57,7 @@ MPI_Comm mpi_comm_core;
 int num_cores = 0;
 int num_nbors = 1;
 int num_iters = 4096;
-int win_size = 1;
+int win_size = 10;
 int min_msgsize = 0;
 int max_msgsize = 1048576 * 4;
 int verbose = 0;
@@ -486,7 +486,7 @@ main (int argc, char **argv)
       puts
 	("#                          average                  max                     min");
       puts
-	("# msgsize iters        msgs/sec MiB/sec        msgs/sec MiB/sec        msgs/sec MiB/sec");
+	("# msgsize iters     msgs/sec    MiB/sec     msgs/sec    MiB/sec     msgs/sec    MiB/sec");
     }
 
   /* Do the benchmark starting from min_msgsize doubling to max_msgsize */
