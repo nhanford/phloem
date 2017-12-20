@@ -64,12 +64,6 @@ Comiple flags:
 #include <mpi.h>
 #include <math.h>
 
-/*
-#ifndef _AIX
-#include "print_mpi_resources.h"
-#endif
-*/
-
 char VERS[] = "1.5";
 
 /*
@@ -80,6 +74,8 @@ Globals
 #define KILO (1024)
 #define MEGA (KILO*KILO)
 #define GIGA (KILO*MEGA)
+
+#define HAVE_NBC 1  /* Change this if the MPI implementation does not support non-blocking collectives */
 
 #define ITRS_EST       (5)        /* Number of iterations used to estimate time */
 #define ITRS_RUN       (1000)     /* Number of iterations to run (without timelimits) */
@@ -120,6 +116,7 @@ Globals
 #define IALLTOALLV  (0x040000)
 #define IALLGATHERV (0x080000)
 #define IGATHERV    (0x100000)
+
 #define NUM_TESTS  (21)
 
 char* TEST_NAMES[] = {
@@ -454,7 +451,7 @@ int processArgs(int argc, char **argv, struct argList* args)
        if user doesn't specify any, all will be run */
     for(j=0; j<NUM_TESTS; j++) {
       if(!strcmp(TEST_NAMES[j], argv[i])) {
-        if(args->testFlags == 0x1FFF) args->testFlags = 0;
+        if(args->testFlags == 0x1FFFFF) args->testFlags = 0;
         args->testFlags |= TEST_FLAGS[j];
       }
     }
@@ -569,35 +566,6 @@ double time_bcast(struct collParams* p)
     return __TIME_USECS__ / (double)p->iter;
 }
 
-double time_ibcast(struct collParams* p)
-{
-    int i;
-    char* buffer = (p->myrank == p->root) ? sbuffer : rbuffer;
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    __TIME_START__;
-    for (i = 0; i < p->iter; i++) {
-        int check = (check_every || (check_once && i == p->iter-1));
-        if (check) {
-          init_sbuffer(p->myrank);
-          init_rbuffer(p->myrank);
-        }
-
-        MPI_Ibcast(buffer, p->count, p->type, p->root, p->comm, &request);
-        MPI_Wait(&request, &status);
-
-        __BAR__(p->comm);
-
-        if (check) {
-            check_sbuffer(p->myrank);
-            check_rbuffer(buffer, 0, p->root, 0, p->size);
-        }
-    }
-    __TIME_END__;
-
-    return __TIME_USECS__ / (double)p->iter;
-}
-
 double time_alltoall(struct collParams* p)
 {
     int i, j;
@@ -612,36 +580,6 @@ double time_alltoall(struct collParams* p)
         }
 
         MPI_Alltoall(sbuffer, p->count, p->type, rbuffer, p->size, p->type, p->comm);
-        __BAR__(p->comm);
-
-        if (check) {
-            check_sbuffer(p->myrank);
-            for (j = 0; j < p->nranks; j++) {
-                check_rbuffer(rbuffer, j*p->size, j, p->myrank*p->size, p->size);
-            }
-        }
-    }
-    __TIME_END__;
-
-    return __TIME_USECS__ / (double)p->iter;
-}
-
-double time_ialltoall(struct collParams* p)
-{
-    int i, j;
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    __TIME_START__;
-    for (i = 0; i < p->iter; i++) {
-        int check = (check_every || (check_once && i == p->iter-1));
-        if (check) {
-            init_sbuffer(p->myrank);
-            init_rbuffer(p->myrank);
-        }
-
-        MPI_Ialltoall(sbuffer, p->count, p->type, rbuffer, p->size, p->type, p->comm, &request);
-        MPI_Wait(&request, &status);
-
         __BAR__(p->comm);
 
         if (check) {
@@ -698,49 +636,6 @@ double time_alltoallv(struct collParams* p)
     return __TIME_USECS__ / (double)p->iter;
 }
 
-double time_ialltoallv(struct collParams* p)
-{
-    int i, j, k, count;
-    int disp = 0;
-    int chunksize = p->count / p->nranks;
-    if (chunksize == 0) { chunksize = 1; }
-    for (i = 0; i < p->nranks; i++) {
-        int count = ((i+p->myrank)*chunksize) % (p->count+1);
-        sendcounts[i] = count;
-        recvcounts[i] = count;
-        sdispls[i] = disp;
-        rdispls[i] = disp;
-        disp += count;
-    }
-    size_t scale = (p->count > 0) ? (p->size/p->count) : 0;
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    __TIME_START__;
-    for (i = 0; i < p->iter; i++) {
-        int check = (check_every || (check_once && i == p->iter-1));
-        if (check) {
-            init_sbuffer(p->myrank);
-            init_rbuffer(p->myrank);
-        }
-
-        MPI_Ialltoallv(sbuffer, sendcounts, sdispls, p->type, rbuffer, recvcounts, rdispls, p->type, p->comm, &request);
-        MPI_Wait(&request, &status);
-        __BAR__(p->comm);
-
-        if (check) {
-            check_sbuffer(p->myrank);
-            for (k = 0; k < p->nranks; k++) {
-                disp = 0;
-                for (j = 0; j < p->myrank; j++) { disp += ((j+k)*chunksize) % (p->size+1); }
-                check_rbuffer(rbuffer, rdispls[k]*scale, k, disp, recvcounts[k]*scale);
-            }
-        }
-    }
-    __TIME_END__;
-
-    return __TIME_USECS__ / (double)p->iter;
-}
-
 double time_allgather(struct collParams* p)
 {
     int i, j;
@@ -755,35 +650,6 @@ double time_allgather(struct collParams* p)
         }
 
         MPI_Allgather(sbuffer, p->count, p->type, rbuffer, p->count, p->type, p->comm);
-        __BAR__(p->comm);
-
-        if (check) {
-            check_sbuffer(p->myrank);
-            for (j = 0; j < p->nranks; j++) {
-                check_rbuffer(rbuffer, j*p->size, j, 0, p->size);
-            }
-        }
-    }
-    __TIME_END__;
-
-    return __TIME_USECS__ / (double)p->iter;
-}
-
-double time_iallgather(struct collParams* p)
-{
-    int i, j;
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    __TIME_START__;
-    for (i = 0; i < p->iter; i++) {
-        int check = (check_every || (check_once && i == p->iter-1));
-        if (check) {
-            init_sbuffer(p->myrank);
-            init_rbuffer(p->myrank);
-        }
-
-        MPI_Iallgather(sbuffer, p->count, p->type, rbuffer, p->count, p->type, p->comm, &request);
-        MPI_Wait(&request, &status);
         __BAR__(p->comm);
 
         if (check) {
@@ -837,46 +703,6 @@ double time_allgatherv(struct collParams* p)
     return __TIME_USECS__ / (double)p->iter;
 }
 
-double time_iallgatherv(struct collParams* p)
-{
-    int i, j, count;
-    int disp = 0;
-    int chunksize = p->count / p->nranks;
-    if (chunksize == 0) { chunksize = 1; }
-    for ( i = 0; i < p->nranks; i++) {
-        int count = (i*chunksize) % (p->count+1);
-        recvcounts[i] = count;
-        rdispls[i] = disp;
-        disp += count;
-    }
-    size_t scale = (p->count > 0) ? (p->size/p->count) : 0;
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    count = (p->myrank*chunksize) % (p->count+1);
-    __TIME_START__;
-    for (i = 0; i < p->iter; i++) {
-        int check = (check_every || (check_once && i == p->iter-1));
-        if (check) {
-            init_sbuffer(p->myrank);
-            init_rbuffer(p->myrank);
-        }
-
-        MPI_Iallgatherv(sbuffer, count, p->type, rbuffer, recvcounts, rdispls, p->type, p->comm, &request);
-        MPI_Wait(&request, &status);
-        __BAR__(p->comm);
-
-        if (check) {
-            check_sbuffer(p->myrank);
-            for (j = 0; j < p->nranks; j++) {
-                check_rbuffer(rbuffer, rdispls[j]*scale, j, 0, recvcounts[j]*scale);
-            }
-        }
-    }
-    __TIME_END__;
-
-    return __TIME_USECS__ / (double)p->iter;
-}
-
 double time_gather(struct collParams* p)
 {
     int i, j;
@@ -891,37 +717,6 @@ double time_gather(struct collParams* p)
         }
 
         MPI_Gather(sbuffer, p->count, p->type, rbuffer, p->count, p->type, p->root, p->comm);
-        __BAR__(p->comm);
-
-        if (check) {
-            check_sbuffer(p->myrank);
-            if (p->myrank == p->root) {
-                for (j = 0; j < p->nranks; j++) {
-                    check_rbuffer(rbuffer, j*p->size, j, 0, p->size);
-                }
-            }
-        }
-    }
-    __TIME_END__;
-
-    return __TIME_USECS__ / (double)p->iter;
-}
-
-double time_igather(struct collParams* p)
-{
-    int i, j;
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    __TIME_START__;
-    for (i = 0; i < p->iter; i++) {
-        int check = (check_every || (check_once && i == p->iter-1));
-        if (check) {
-            init_sbuffer(p->myrank);
-            init_rbuffer(p->myrank);
-        }
-
-        MPI_Igather(sbuffer, p->count, p->type, rbuffer, p->count, p->type, p->root, p->comm, &request);
-        MPI_Wait(&request, &status);
         __BAR__(p->comm);
 
         if (check) {
@@ -979,6 +774,265 @@ double time_gatherv(struct collParams* p)
     return __TIME_USECS__ / (double)p->iter;
 }
 
+double time_scatter(struct collParams* p)
+{
+    int i;
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    __TIME_START__;
+    for (i = 0; i < p->iter; i++) {
+        int check = (check_every || (check_once && i == p->iter-1));
+        if (check) {
+            init_sbuffer(p->myrank);
+            init_rbuffer(p->myrank);
+        }
+
+        MPI_Scatter(sbuffer, p->count, p->type, rbuffer, p->count, p->type, p->root, p->comm);
+        __BAR__(p->comm);
+
+        if (check) {
+            check_sbuffer(p->myrank);
+            check_rbuffer(rbuffer, 0, p->root, p->myrank*p->size, p->size);
+        }
+    }
+    __TIME_END__;
+
+    return __TIME_USECS__ / (double)p->iter;
+}
+
+double time_allreduce(struct collParams* p)
+{
+    int i;
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    __TIME_START__;
+    for (i = 0; i < p->iter; i++) {
+        MPI_Allreduce(sbuffer, rbuffer, p->count, p->type, p->reduceop, p->comm);
+        __BAR__(p->comm);
+    }
+    __TIME_END__;
+
+    return __TIME_USECS__ / (double)p->iter;
+}
+
+double time_reduce(struct collParams* p)
+{
+    int i;
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    __TIME_START__;
+    for (i = 0; i < p->iter; i++) {
+        MPI_Reduce(sbuffer, rbuffer, p->count, p->type, p->reduceop, p->root, p->comm);
+        __BAR__(p->comm);
+    }
+    __TIME_END__;
+
+    return __TIME_USECS__ / (double)p->iter;
+}
+
+#if HAVE_NBC == 1
+double time_ibcast(struct collParams* p)
+{
+    int i;
+    char* buffer = (p->myrank == p->root) ? sbuffer : rbuffer;
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    __TIME_START__;
+    for (i = 0; i < p->iter; i++) {
+        int check = (check_every || (check_once && i == p->iter-1));
+        if (check) {
+          init_sbuffer(p->myrank);
+          init_rbuffer(p->myrank);
+        }
+
+        MPI_Ibcast(buffer, p->count, p->type, p->root, p->comm, &request);
+        MPI_Wait(&request, &status);
+
+        __BAR__(p->comm);
+
+        if (check) {
+            check_sbuffer(p->myrank);
+            check_rbuffer(buffer, 0, p->root, 0, p->size);
+        }
+    }
+    __TIME_END__;
+
+    return __TIME_USECS__ / (double)p->iter;
+}
+
+double time_ialltoall(struct collParams* p)
+{
+    int i, j;
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    __TIME_START__;
+    for (i = 0; i < p->iter; i++) {
+        int check = (check_every || (check_once && i == p->iter-1));
+        if (check) {
+            init_sbuffer(p->myrank);
+            init_rbuffer(p->myrank);
+        }
+
+        MPI_Ialltoall(sbuffer, p->count, p->type, rbuffer, p->size, p->type, p->comm, &request);
+        MPI_Wait(&request, &status);
+
+        __BAR__(p->comm);
+
+        if (check) {
+            check_sbuffer(p->myrank);
+            for (j = 0; j < p->nranks; j++) {
+                check_rbuffer(rbuffer, j*p->size, j, p->myrank*p->size, p->size);
+            }
+        }
+    }
+    __TIME_END__;
+
+    return __TIME_USECS__ / (double)p->iter;
+}
+
+double time_ialltoallv(struct collParams* p)
+{
+    int i, j, k, count;
+    int disp = 0;
+    int chunksize = p->count / p->nranks;
+    if (chunksize == 0) { chunksize = 1; }
+    for (i = 0; i < p->nranks; i++) {
+        int count = ((i+p->myrank)*chunksize) % (p->count+1);
+        sendcounts[i] = count;
+        recvcounts[i] = count;
+        sdispls[i] = disp;
+        rdispls[i] = disp;
+        disp += count;
+    }
+    size_t scale = (p->count > 0) ? (p->size/p->count) : 0;
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    __TIME_START__;
+    for (i = 0; i < p->iter; i++) {
+        int check = (check_every || (check_once && i == p->iter-1));
+        if (check) {
+            init_sbuffer(p->myrank);
+            init_rbuffer(p->myrank);
+        }
+
+        MPI_Ialltoallv(sbuffer, sendcounts, sdispls, p->type, rbuffer, recvcounts, rdispls, p->type, p->comm, &request);
+        MPI_Wait(&request, &status);
+        __BAR__(p->comm);
+
+        if (check) {
+            check_sbuffer(p->myrank);
+            for (k = 0; k < p->nranks; k++) {
+                disp = 0;
+                for (j = 0; j < p->myrank; j++) { disp += ((j+k)*chunksize) % (p->size+1); }
+                check_rbuffer(rbuffer, rdispls[k]*scale, k, disp, recvcounts[k]*scale);
+            }
+        }
+    }
+    __TIME_END__;
+
+    return __TIME_USECS__ / (double)p->iter;
+}
+
+double time_iallgather(struct collParams* p)
+{
+    int i, j;
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    __TIME_START__;
+    for (i = 0; i < p->iter; i++) {
+        int check = (check_every || (check_once && i == p->iter-1));
+        if (check) {
+            init_sbuffer(p->myrank);
+            init_rbuffer(p->myrank);
+        }
+
+        MPI_Iallgather(sbuffer, p->count, p->type, rbuffer, p->count, p->type, p->comm, &request);
+        MPI_Wait(&request, &status);
+        __BAR__(p->comm);
+
+        if (check) {
+            check_sbuffer(p->myrank);
+            for (j = 0; j < p->nranks; j++) {
+                check_rbuffer(rbuffer, j*p->size, j, 0, p->size);
+            }
+        }
+    }
+    __TIME_END__;
+
+    return __TIME_USECS__ / (double)p->iter;
+}
+
+double time_iallgatherv(struct collParams* p)
+{
+    int i, j, count;
+    int disp = 0;
+    int chunksize = p->count / p->nranks;
+    if (chunksize == 0) { chunksize = 1; }
+    for ( i = 0; i < p->nranks; i++) {
+        int count = (i*chunksize) % (p->count+1);
+        recvcounts[i] = count;
+        rdispls[i] = disp;
+        disp += count;
+    }
+    size_t scale = (p->count > 0) ? (p->size/p->count) : 0;
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    count = (p->myrank*chunksize) % (p->count+1);
+    __TIME_START__;
+    for (i = 0; i < p->iter; i++) {
+        int check = (check_every || (check_once && i == p->iter-1));
+        if (check) {
+            init_sbuffer(p->myrank);
+            init_rbuffer(p->myrank);
+        }
+
+        MPI_Iallgatherv(sbuffer, count, p->type, rbuffer, recvcounts, rdispls, p->type, p->comm, &request);
+        MPI_Wait(&request, &status);
+        __BAR__(p->comm);
+
+        if (check) {
+            check_sbuffer(p->myrank);
+            for (j = 0; j < p->nranks; j++) {
+                check_rbuffer(rbuffer, rdispls[j]*scale, j, 0, recvcounts[j]*scale);
+            }
+        }
+    }
+    __TIME_END__;
+
+    return __TIME_USECS__ / (double)p->iter;
+}
+
+double time_igather(struct collParams* p)
+{
+    int i, j;
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    __TIME_START__;
+    for (i = 0; i < p->iter; i++) {
+        int check = (check_every || (check_once && i == p->iter-1));
+        if (check) {
+            init_sbuffer(p->myrank);
+            init_rbuffer(p->myrank);
+        }
+
+        MPI_Igather(sbuffer, p->count, p->type, rbuffer, p->count, p->type, p->root, p->comm, &request);
+        MPI_Wait(&request, &status);
+        __BAR__(p->comm);
+
+        if (check) {
+            check_sbuffer(p->myrank);
+            if (p->myrank == p->root) {
+                for (j = 0; j < p->nranks; j++) {
+                    check_rbuffer(rbuffer, j*p->size, j, 0, p->size);
+                }
+            }
+        }
+    }
+    __TIME_END__;
+
+    return __TIME_USECS__ / (double)p->iter;
+}
+
 double time_igatherv(struct collParams* p)
 {
     int i, j, count;
@@ -1021,32 +1075,6 @@ double time_igatherv(struct collParams* p)
     return __TIME_USECS__ / (double)p->iter;
 }
 
-double time_scatter(struct collParams* p)
-{
-    int i;
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    __TIME_START__;
-    for (i = 0; i < p->iter; i++) {
-        int check = (check_every || (check_once && i == p->iter-1));
-        if (check) {
-            init_sbuffer(p->myrank);
-            init_rbuffer(p->myrank);
-        }
-
-        MPI_Scatter(sbuffer, p->count, p->type, rbuffer, p->count, p->type, p->root, p->comm);
-        __BAR__(p->comm);
-
-        if (check) {
-            check_sbuffer(p->myrank);
-            check_rbuffer(rbuffer, 0, p->root, p->myrank*p->size, p->size);
-        }
-    }
-    __TIME_END__;
-
-    return __TIME_USECS__ / (double)p->iter;
-}
-
 double time_iscatter(struct collParams* p)
 {
     int i;
@@ -1074,21 +1102,6 @@ double time_iscatter(struct collParams* p)
     return __TIME_USECS__ / (double)p->iter;
 }
 
-double time_allreduce(struct collParams* p)
-{
-    int i;
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    __TIME_START__;
-    for (i = 0; i < p->iter; i++) {
-        MPI_Allreduce(sbuffer, rbuffer, p->count, p->type, p->reduceop, p->comm);
-        __BAR__(p->comm);
-    }
-    __TIME_END__;
-
-    return __TIME_USECS__ / (double)p->iter;
-}
-
 double time_iallreduce(struct collParams* p)
 {
     int i;
@@ -1098,21 +1111,6 @@ double time_iallreduce(struct collParams* p)
     for (i = 0; i < p->iter; i++) {
         MPI_Iallreduce(sbuffer, rbuffer, p->count, p->type, p->reduceop, p->comm, &request);
         MPI_Wait(&request, &status);
-        __BAR__(p->comm);
-    }
-    __TIME_END__;
-
-    return __TIME_USECS__ / (double)p->iter;
-}
-
-double time_reduce(struct collParams* p)
-{
-    int i;
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    __TIME_START__;
-    for (i = 0; i < p->iter; i++) {
-        MPI_Reduce(sbuffer, rbuffer, p->count, p->type, p->reduceop, p->root, p->comm);
         __BAR__(p->comm);
     }
     __TIME_END__;
@@ -1135,6 +1133,7 @@ double time_ireduce(struct collParams* p)
 
     return __TIME_USECS__ / (double)p->iter;
 }
+#endif /*  HAVE_NBC  */
 
 /* Prime, estimate, and time the collective called by the specified function
    for the given message size, iteration count, and time limit.  Then, print
@@ -1350,24 +1349,10 @@ int main (int argc, char *argv[])
             }
         }
 
-        if(testFlags & IBCAST) {
-            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
-                p.count = p.size;
-                if(get_time(time_ibcast, "Ibcast", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
-            }
-        }
-
         if(testFlags & ALLTOALL) {
             for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
                 p.count = p.size;
                 if(get_time(time_alltoall, "Alltoall", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
-            }
-        }
-
-        if(testFlags & IALLTOALL) {
-            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
-                p.count = p.size;
-                if(get_time(time_ialltoall, "Ialltoall", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
             }
         }
 
@@ -1378,24 +1363,10 @@ int main (int argc, char *argv[])
             }
         }
 
-        if(testFlags & IALLTOALLV) {
-            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
-                p.count = p.size;
-                if(get_time(time_ialltoallv, "Ialltoallv", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
-            }
-        }
-
         if(testFlags & ALLGATHER) {
             for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
                 p.count = p.size;
                 if(get_time(time_allgather, "Allgather", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
-            }
-        }
-
-        if(testFlags & IALLGATHER) {
-            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
-                p.count = p.size;
-                if(get_time(time_iallgather, "Iallgather", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
             }
         }
 
@@ -1406,24 +1377,10 @@ int main (int argc, char *argv[])
             }
         }
 
-        if(testFlags & IALLGATHERV) {
-            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
-                p.count = p.size;
-                if(get_time(time_iallgatherv, "Iallgatherv", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
-            }
-        }
-
         if(testFlags & GATHER) {
             for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
                 p.count = p.size;
                 if(get_time(time_gather, "Gather", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
-            }
-        }
-
-        if(testFlags & IGATHER) {
-            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
-                p.count = p.size;
-                if(get_time(time_igather, "Igather", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
             }
         }
 
@@ -1434,17 +1391,60 @@ int main (int argc, char *argv[])
             }
         }
 
-        if(testFlags & IGATHERV) {
-            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
-                p.count = p.size;
-                if(get_time(time_igatherv, "Igatherv", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
-            }
-        }
-
         if(testFlags & SCATTER) {
             for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
                 p.count = p.size;
                 if(get_time(time_scatter, "Scatter", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
+            }
+        }
+
+#if HAVE_NBC == 1
+        if(testFlags & IBCAST) {
+            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
+                p.count = p.size;
+                if(get_time(time_ibcast, "Ibcast", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
+            }
+        }
+
+        if(testFlags & IALLTOALL) {
+            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
+                p.count = p.size;
+                if(get_time(time_ialltoall, "Ialltoall", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
+            }
+        }
+
+        if(testFlags & IALLTOALLV) {
+            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
+                p.count = p.size;
+                if(get_time(time_ialltoallv, "Ialltoallv", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
+            }
+        }
+
+        if(testFlags & IALLGATHER) {
+            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
+                p.count = p.size;
+                if(get_time(time_iallgather, "Iallgather", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
+            }
+        }
+
+        if(testFlags & IALLGATHERV) {
+            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
+                p.count = p.size;
+                if(get_time(time_iallgatherv, "Iallgatherv", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
+            }
+        }
+
+        if(testFlags & IGATHER) {
+            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
+                p.count = p.size;
+                if(get_time(time_igather, "Igather", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
+            }
+        }
+
+        if(testFlags & IGATHERV) {
+            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
+                p.count = p.size;
+                if(get_time(time_igatherv, "Igatherv", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
             }
         }
 
@@ -1454,6 +1454,7 @@ int main (int argc, char *argv[])
                 if(get_time(time_iscatter, "Iscatter", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
             }
         }
+#endif /*  HAVE NBC  */
 
         /* for the reductions, actually add some doubles to do something of interest */
         p.type     = MPI_DOUBLE;
@@ -1467,19 +1468,20 @@ int main (int argc, char *argv[])
             }
         }
 
-        if(testFlags & IALLREDUCE) {
-            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
-                if(p.size < sizeof(double)) continue;
-                p.count = p.size / sizeof(double);
-                if(get_time(time_iallreduce, "Iallreduce", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
-            }
-        }
-
         if(testFlags & REDUCE) {
             for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
                 if(p.size < sizeof(double)) continue;
                 p.count = p.size / sizeof(double);
                 if(get_time(time_reduce, "Reduce", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
+            }
+        }
+
+#if HAVE_NBC == 1
+        if(testFlags & IALLREDUCE) {
+            for(p.size = messStart; p.size <= messStop; p.size = (p.size > 0) ? p.size << 1 : 1) {
+                if(p.size < sizeof(double)) continue;
+                p.count = p.size / sizeof(double);
+                if(get_time(time_iallreduce, "Iallreduce", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
             }
         }
 
@@ -1490,18 +1492,13 @@ int main (int argc, char *argv[])
                 if(get_time(time_ireduce, "Ireduce", &p, iter, time_limit) > time_maxMsg && time_maxMsg > 0.0) break;
             }
         }
+#endif /*  HAVE NBC  */
     } /* end loop over communicators */
 
     /* print memory usage */
     if (rank_local == 0) {
         printf("Message buffers (KB):\t%ld\n", allocated_memory/1024);
     }
-
-/*
-#ifndef _AIX
-    print_mpi_resources();
-#endif
-*/
 
     /* mark end of output */
     if (rank_local == 0) { printf("END mpiBench\n"); }
