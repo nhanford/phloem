@@ -1,5 +1,6 @@
 # for linux
 CC=mpicc
+CFLAGS=-O3
 
 #this should agree with the VERS char string in mpiBench.c
 VERS=1.5
