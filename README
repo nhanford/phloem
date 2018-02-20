@@ -29,3 +29,9 @@ Published 1/15/08
 by Chris Chambreau (chcham@llnl.gov)
 Lawrence Livermore National Laboratory
 Release number LLNL-MI-400479
+
+Other codes contained in this repository are released separately:
+
+- mpiGraph/mpiBench: UCRL-CODE-232117
+- Presta: UCRL-CODE-2001-028
+- SQMR: UCRL-CODE-400846
