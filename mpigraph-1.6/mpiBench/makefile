@@ -3,7 +3,7 @@ CC=mpicc
 CFLAGS=-O3
 
 #this should agree with the VERS char string in mpiBench.c
-VERS=1.5
+VERS=1.6
 NAME=mpiBench-$(VERS)
 
 # for AIX

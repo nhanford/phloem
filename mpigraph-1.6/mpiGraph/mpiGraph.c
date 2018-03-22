@@ -71,7 +71,7 @@ Additional BSD Notice
 char  hostname[256];
 char* hostnames;
 
-char VERS[] = "1.5";
+char VERS[] = "1.6";
 
 /* =============================================================
  * TIMER MACROS

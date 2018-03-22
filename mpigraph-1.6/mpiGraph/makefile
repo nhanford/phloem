@@ -1,7 +1,7 @@
-VERS=1.5
+VERS=1.6
 
 all: clean
-	mpicc -o mpiGraph mpiGraph.c
+	mpicc -O3 -o mpiGraph mpiGraph.c
 
 debug:
 	mpicc -g -O0 -o mpiGraph mpiGraph.c

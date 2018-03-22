@@ -52,6 +52,9 @@ Additional BSD Notice
 Comiple flags:
   -DNO_BARRIER       - Drops MPI_Barrier() call that separates consecutive collective calls
   -DUSE_GETTIMEOFDAY - Use gettimeofday() for timing rather than MPI_WTime()
+  -DUSE_MPI_BARRIER  - Use MPI implementation MPI_Barrier for timing loop instead of generic barrier
+  -DINCLUDE_BARRIER  - Include barrier operation in timing loop results
+
 */
 
 #include <stdio.h>
@@ -64,7 +67,7 @@ Comiple flags:
 #include <mpi.h>
 #include <math.h>
 
-char VERS[] = "1.5";
+char VERS[] = "1.6";
 
 /*
 ------------------------------------------------------
@@ -84,14 +87,32 @@ Globals
 #define MAX_PROC_MEM   (1*GIGA)   /* Limit on MPI buffer sizes in bytes */
 
 /* Compile with -DNO_BARRIER to drop barriers between collective calls
-     Adds barrier between test iterations to sync all procs before issuing next collective
-     Prevents non-root MPI ranks from escaping ahead into future iterations
+     Default behavior adds barrier between test iterations to sync all procs before issuing next collective,
+     which prevents non-root MPI ranks from escaping ahead into future iterations
+
+   Compile with -DINCLUDE_BARRIER to include barrier operation in timing loop results
      Barrier overhead is not subtracted from timing results
+     Default behavior is to exclude timing loop barrier from results
+
+   Compile with -DUSE_MPI_BARRIER to use MPI implementation barrier instead of implementation-neutral barrier
+     Default behavior is to use generic barrier
 */
+
+#ifdef USE_MPI_BARRIER
+#define __BARRIER_IMPL__(comm) MPI_Barrier(comm)
+#else
+void generic_barrier(MPI_Comm comm);
+#define __BARRIER_IMPL__(comm) generic_barrier(comm)
+#endif
+
 #ifdef NO_BARRIER
   #define __BAR__(comm)
 #else
-  #define __BAR__(comm) MPI_Barrier(comm)
+#ifdef INCLUDE_BARRIER
+  #define __BAR__(comm) __BARRIER_IMPL__(comm)
+#else
+  #define __BAR__(comm) __TIME_PAUSE__ ; __BARRIER_IMPL__(comm) ; __TIME_RESTART__
+#endif
 #endif
 
 /* we use a bit mask to flag which collectives to test */
@@ -269,12 +290,93 @@ struct timezone g_timezone;
    on some systems gettimeofday may be reset backwards by a global clock,
    which can even lead to negative length time intervals
 */
+#ifdef INCLUDE_BARRIER
 #define __TIME_START__    (g_timeval__start    = MPI_Wtime())
 #define __TIME_END__      (g_timeval__end      = MPI_Wtime())
 #define __TIME_USECS__    ((g_timeval__end - g_timeval__start) * 1000000.0)
 double g_timeval__start, g_timeval__end;
 
+#else   /*  Use timing macros to exclude MPI_Barrier from timing.  */
+
+#define __TIME_START__    g_timeval__running = 0; g_timeval__start    = MPI_Wtime()
+#define __TIME_PAUSE__    (g_timeval__running += MPI_Wtime() - g_timeval__start)
+#define __TIME_RESTART__    (g_timeval__start = MPI_Wtime())
+#define __TIME_END__    (g_timeval__running += MPI_Wtime() - g_timeval__start)
+#define __TIME_USECS__    (g_timeval__running * 1000000.0)
+double g_timeval__start, g_timeval__end, g_timeval__running;
+
+#endif /* of INCLUDE_BARRIER */
+
 #endif /* of USE_GETTIMEOFDAY */
+
+
+/* This barrier implementation is taken from the Sphinx MPI benchmarks
+   and is based directly on the MPICH barrier implementation...        */
+
+#define GENERIC_BARRIER_TAG 2
+void
+generic_barrier ( MPI_Comm curcomm )
+{
+  int rank, size, N2_prev, surfeit;
+  int d, dst, src, temp;
+  MPI_Status status;
+
+  /* Intialize communicator size */
+  ( void ) MPI_Comm_size ( curcomm, &size );
+
+  /* If there's only one member, this is trivial */
+  if ( size > 1 )
+  {
+
+    MPI_Comm_rank ( curcomm, &rank );
+
+    for ( temp = size, N2_prev = 1;
+          temp > 1; temp >>= 1, N2_prev <<= 1 ) /* NULL */ ;
+
+    surfeit = size - N2_prev;
+
+    /* Perform a combine-like operation */
+    if ( rank < N2_prev )
+    {
+      if ( rank < surfeit )
+      {
+
+        /* get the fanin letter from the upper "half" process: */
+        dst = N2_prev + rank;
+
+        MPI_Recv ( ( void * ) 0, 0, MPI_INT, dst,
+                   GENERIC_BARRIER_TAG, curcomm, &status );
+      }
+
+      /* combine on embedded N2_prev power-of-two processes */
+      for ( d = 1; d < N2_prev; d <<= 1 )
+      {
+        dst = ( rank ^ d );
+
+        MPI_Sendrecv ( ( void * ) 0, 0, MPI_INT, dst,
+                       GENERIC_BARRIER_TAG, ( void * ) 0, 0, MPI_INT,
+                       dst, GENERIC_BARRIER_TAG, curcomm, &status );
+      }
+
+      /* fanout data to nodes above N2_prev... */
+      if ( rank < surfeit )
+      {
+        dst = N2_prev + rank;
+        MPI_Send ( ( void * ) 0, 0, MPI_INT, dst, GENERIC_BARRIER_TAG,
+                   curcomm );
+      }
+    }
+    else
+    {
+      /* fanin data to power of 2 subset */
+      src = rank - N2_prev;
+      MPI_Sendrecv ( ( void * ) 0, 0, MPI_INT, src, GENERIC_BARRIER_TAG,
+                     ( void * ) 0, 0, MPI_INT, src, GENERIC_BARRIER_TAG,
+                     curcomm, &status );
+    }
+  }
+  return;
+}
 
 /* Gather value from each task and print statistics */
 double Print_Timings(double value, char* title, size_t bytes, int iters, MPI_Comm comm)
