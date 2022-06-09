@@ -11,15 +11,15 @@ Please also read the Additional BSD Notice below.
 
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
-â* Redistributions of source code must retain the above copyright notice, this
+ï¿½* Redistributions of source code must retain the above copyright notice, this
    list of conditions and the disclaimer below.
-â* Redistributions in binary form must reproduce the above copyright notice,
+ï¿½* Redistributions in binary form must reproduce the above copyright notice,
    this list of conditions and the disclaimer (as noted below) in the documentation
    and/or other materials provided with the distribution.
-â* Neither the name of the LLNL nor the names of its contributors may be used to
+ï¿½* Neither the name of the LLNL nor the names of its contributors may be used to
    endorse or promote products derived from this software without specific prior
    written permission.
-â* 
+ï¿½* 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -63,6 +63,7 @@ Comiple flags:
 #include <assert.h>
 #include <signal.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/time.h>
 #include <mpi.h>
 #include <math.h>
@@ -213,6 +214,30 @@ void* _ALLOC_MAIN_ (size_t size, char* debug)
     memset(p_buf, 0, size);
     allocated_memory += size;
     return p_buf;
+}
+
+void* _ALLOC_ALIGNED_ (size_t size, char* debug, int locked)
+{
+    void* p_buf;
+    int retval;
+    retval = posix_memalign(&p_buf, (size_t) sysconf(_SC_PAGESIZE), size);
+    if (retval)
+        return NULL;
+    if (locked)
+    {
+        if (mlock(p_buf, size))
+        {
+            free(p_buf);
+            return NULL;
+        }
+        return p_buf;
+    }
+}
+
+void free_buf(void* p_buf, size_t size)
+{
+    munlock(p_buf, size);
+    free(p_buf);
 }
 
 /* Processes byte strings in the following format:
@@ -1333,8 +1358,8 @@ int main (int argc, char *argv[])
     /* allocate message buffers and initailize timing functions */
     while(messStop*((size_t)rank_count)*2 > mem_limit && messStop > 0) messStop /= 2;
     buffer_size = messStop * rank_count;
-    sbuffer   = (char*) _ALLOC_MAIN_(messStop    * rank_count, "Send Buffer");
-    rbuffer   = (char*) _ALLOC_MAIN_(messStop    * rank_count, "Receive Buffer");
+    sbuffer   = (char*) _ALLOC_ALIGNED_(messStop * rank_count, "Send Buffer", 1);
+    rbuffer   = (char*) _ALLOC_ALIGNED_(messStop * rank_count, "Receive Buffer", 1);
     sendcounts = (int*) _ALLOC_MAIN_(sizeof(int) * rank_count, "Send Counts");
     sdispls    = (int*) _ALLOC_MAIN_(sizeof(int) * rank_count, "Send Displacements");
     recvcounts = (int*) _ALLOC_MAIN_(sizeof(int) * rank_count, "Recv Counts");
@@ -1607,5 +1632,7 @@ int main (int argc, char *argv[])
 
     /* shut down */
     MPI_Finalize();
+    free_buf(sbuffer, messStop * rank_count);
+    free_buf(rbuffer, messStop * rank_count);
     return 0;
 }
