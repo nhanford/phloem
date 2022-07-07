@@ -62,6 +62,8 @@ TESTPARAMS;
 TESTPARAMS *testParams;
 
 
+void* _ALLOC_ALIGNED_ (size_t size, char* debug, int locked);
+void free_buf(void* p_buf, size_t size);
 void runTest ( TESTPARAMS * testParams );
 int generateResults ( TESTPARAMS * testParams, int procs, int messSize,
                       int iters, double *result );

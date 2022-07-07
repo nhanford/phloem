@@ -43,6 +43,7 @@
 */
 
 
+#include <sys/mman.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -158,6 +159,31 @@ main ( int argc, char *argv[] )
   MPI_Finalize (  );
 
   exit ( EXIT_SUCCESS );
+}
+
+
+void* _ALLOC_ALIGNED_ (size_t size, char* debug, int locked)
+{
+    void* p_buf;
+    int retval;
+    retval = posix_memalign(&p_buf, (size_t) sysconf(_SC_PAGESIZE), size);
+    if (retval)
+        return NULL;
+    if (locked)
+    {
+        if (mlock(p_buf, size))
+        {
+            free(p_buf);
+            return NULL;
+        }
+        return p_buf;
+    }
+}
+
+void free_buf(void* p_buf, size_t size)
+{
+    munlock(p_buf, size);
+    free(p_buf);
 }
 
 
@@ -442,7 +468,7 @@ runUnicomTest ( int bufsize, int iters, MPI_Comm * activeComm )
 
   if ( isActiveProc ( activeComm ) )
   {
-    comBuf = ( char * ) malloc ( bufsize );
+    comBuf = _ALLOC_ALIGNED_ ( bufsize, "com buffer", 1 );
     memset ( comBuf, 0, bufsize );
 
     /*  Ensure communication paths have been initialized  */
@@ -512,7 +538,7 @@ runUnicomTest ( int bufsize, int iters, MPI_Comm * activeComm )
 
     diff = MPI_Wtime (  ) - start;
 
-    free ( comBuf );
+    free_buf ( comBuf, bufsize );
   }
 
   MPI_Barrier ( MPI_COMM_WORLD );
@@ -538,7 +564,7 @@ runNonblockUnicomTest ( int bufsize, int iters, MPI_Comm * activeComm )
   currtarg = getTargetRank ( rank, argStruct.procsPerNode,
                              argStruct.useNearestRank );
 
-  comBuf = ( char * ) malloc ( bufsize );
+  comBuf = _ALLOC_ALIGNED_ ( bufsize, "com buffer", 1 );
   memset ( comBuf, 0, bufsize );
 
   requests = malloc ( sizeof ( MPI_Request ) * argStruct.iters );
@@ -614,7 +640,7 @@ runNonblockUnicomTest ( int bufsize, int iters, MPI_Comm * activeComm )
     diff = MPI_Wtime (  ) - start;
   }
 
-  free ( comBuf );
+  free_buf ( comBuf, bufsize );
   free ( requests );
   free ( statuses );
 
@@ -643,8 +669,8 @@ runBicomTest ( int bufsize, int iters, MPI_Comm * activeComm )
 
   if ( currtarg != -1 && isActiveProc ( activeComm ) )
   {
-    sendbuf = ( char * ) malloc ( bufsize );
-    recvbuf = ( char * ) malloc ( bufsize );
+    sendbuf = _ALLOC_ALIGNED_ ( bufsize, "send buffer", 1 );
+    recvbuf = _ALLOC_ALIGNED_ ( bufsize, "receive buffer", 1 );
 
     memset ( sendbuf, 0, bufsize );
     memset ( recvbuf, 0, bufsize );
@@ -697,8 +723,8 @@ runBicomTest ( int bufsize, int iters, MPI_Comm * activeComm )
 
     diff = MPI_Wtime (  ) - start;
 
-    free ( sendbuf );
-    free ( recvbuf );
+    free_buf ( sendbuf, bufsize );
+    free_buf ( recvbuf, bufsize );
   }
 
   MPI_Barrier ( MPI_COMM_WORLD );
@@ -724,8 +750,8 @@ runNonblockBicomTest ( int bufsize, int iters, MPI_Comm * activeComm )
   currtarg = getTargetRank ( rank, argStruct.procsPerNode,
                              argStruct.useNearestRank );
 
-  sendBuf = ( char * ) malloc ( bufsize );
-  recvBuf = ( char * ) malloc ( bufsize );
+  sendBuf = _ALLOC_ALIGNED_ ( bufsize, "send buffer", 1 );
+  recvBuf = _ALLOC_ALIGNED_ ( bufsize, "receive buffer", 1 );
 
   sendRequests = malloc ( sizeof ( MPI_Request ) * argStruct.iters );
   recvRequests = malloc ( sizeof ( MPI_Request ) * argStruct.iters );
@@ -795,8 +821,8 @@ runNonblockBicomTest ( int bufsize, int iters, MPI_Comm * activeComm )
     diff = MPI_Wtime (  ) - start;
   }
 
-  free ( sendBuf );
-  free ( recvBuf );
+  free_buf ( sendBuf, bufsize );
+  free_buf ( recvBuf, bufsize );
   free ( sendRequests );
   free ( recvRequests );
   free ( sendStatuses );
@@ -821,7 +847,7 @@ runLatencyTest ( int bufsize, int iters, MPI_Comm * activeComm )
 
   if ( bufsize > 0 )
   {
-    comBuf = ( char * ) malloc ( bufsize );
+    comBuf = _ALLOC_ALIGNED_ ( bufsize, "com buffer", 1 );
 
     if ( comBuf == NULL )
       prestaAbort ( "Failed to allocate latency buffer.\n" );
@@ -888,7 +914,7 @@ runLatencyTest ( int bufsize, int iters, MPI_Comm * activeComm )
   MPI_Barrier ( MPI_COMM_WORLD );
 
   if ( comBuf != NULL )
-    free ( comBuf );
+    free_buf ( comBuf, bufsize );
 
   return diff;
 }
