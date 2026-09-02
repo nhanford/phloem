@@ -1,0 +1,6 @@
+[submodule "thirdparty/blt"]
+	path = thirdparty/blt
+	url = https://github.com/LLNL/blt.git
+[submodule "thirdparty/umpire"]
+	path = thirdparty/umpire
+	url = https://github.com/LLNL/Umpire.git

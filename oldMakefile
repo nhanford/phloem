@@ -1,0 +1,77 @@
+# Makefile for MPI Benchmarks
+
+# Compiler and flags (allow override from environment)
+MPICC ?= mpicc
+CFLAGS ?= -Wall -O3
+LDFLAGS ?= -lm
+
+# Directories
+SRC_DIR = src
+BUILD_DIR = build
+BIN_DIR = bin
+# Use PREFIX from environment if provided (Spack sets this)
+PREFIX ?= /usr/local
+INSTALL_DIR = $(PREFIX)/bin
+
+# Source files
+UTIL_SRC = $(SRC_DIR)/util.c
+BENCH_SRCS = $(SRC_DIR)/mpiBench.c $(SRC_DIR)/mpiGraph.c $(SRC_DIR)/sqmr.c $(SRC_DIR)/com.c
+
+# Object files
+UTIL_OBJ = $(BUILD_DIR)/util.o
+BENCH_OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(BENCH_SRCS))
+
+# Executables
+BENCH_EXECS = $(patsubst $(SRC_DIR)/%.c,$(BIN_DIR)/%,$(BENCH_SRCS))
+
+# Optional ROCM support
+ifdef ENABLE_HIP
+    CFLAGS += -DENABLE_HIP -D__HIP_PLATFORM_AMD__
+    # Use ROCM_PATH from environment if provided
+    ROCM_PATH ?= /opt/rocm
+    LDFLAGS += -L$(ROCM_PATH)/lib -Wl,-rpath,$(ROCM_PATH)/lib -lamdhip64
+    INCLUDES += -I$(ROCM_PATH)/include
+endif
+
+# Default target
+all: directories $(BENCH_EXECS)
+
+# Create necessary directories
+directories:
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BIN_DIR)
+
+# Build util.o first
+$(UTIL_OBJ): $(UTIL_SRC)
+	$(MPICC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# Build benchmark object files
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+	$(MPICC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# # Link executables - special case for com which depends on util
+# $(BIN_DIR)/com: $(BUILD_DIR)/com.o $(UTIL_OBJ)
+# 	$(MPICC) $^ -o $@ $(LDFLAGS)
+
+# # Link other executables without util dependency
+# $(BIN_DIR)/%: $(BUILD_DIR)/%.o
+# 	$(MPICC) $^ -o $@ $(LDFLAGS)
+
+# Link all executables with util dependency
+$(BIN_DIR)/%: $(BUILD_DIR)/%.o $(UTIL_OBJ)
+	$(MPICC) $^ -o $@ $(LDFLAGS)
+
+# Install rule
+install: all
+	mkdir -p $(INSTALL_DIR)
+	cp $(BENCH_EXECS) $(INSTALL_DIR)
+
+# Clean rule
+clean:
+	rm -rf $(BUILD_DIR)/*.o $(BENCH_EXECS)
+
+# Deep clean (including directories)
+distclean: clean
+	rm -rf $(BUILD_DIR) $(BIN_DIR)
+
+.PHONY: all directories install clean distclean
