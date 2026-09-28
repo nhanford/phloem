@@ -1,0 +1,56 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.history/
+
+# Build directories and artifacts
+build/
+bin/
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+__pycache__/
+
+# Editor backup files
+*~
+*.swp
+*.swo
+.*.swp
+.*.swo
+*.bak
+*.tmp
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite
+vgcore*
+
+# Other IDE files
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Dependency directories
+node_modules/
+jspm_packages/

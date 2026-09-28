@@ -1,0 +1,284 @@
+stages:
+  - build
+  - test
+  - build_spack
+  - test_spack
+  - build_hip
+  - test_hip
+  - build_hip_spack
+  - test_hip_spack
+  - build_cuda
+  - test_cuda
+  - build_cuda_spack
+  - test_cuda_spack
+
+variables:
+  PREFIX: "${CI_PROJECT_DIR}/install"
+
+default:
+  id_tokens:
+    SITE_ID_TOKEN:
+      aud: https://lc.llnl.gov/gitlab
+
+build:
+  stage: build
+  tags:
+    - oslic
+    - batch
+  variables:
+    LLNL_SLURM_SCHEDULER_PARAMETERS: "-N 1 -n 4"
+  script:
+    - git submodule update --init --recursive
+    - mkdir -p build
+    - cmake -B build -C .gitlab/ci/host-config.cmake -DCMAKE_INSTALL_PREFIX=${PREFIX}
+    - cmake --build build -j
+    - cmake --install build
+  artifacts:
+    paths:
+      - ${PREFIX}/
+    expire_in: 1 day
+  needs: []
+  dependencies: []
+
+build_spack:
+  stage: build_spack
+  tags:
+    - oslic
+    - batch
+  variables:
+    LLNL_SLURM_SCHEDULER_PARAMETERS: "-N 1 -n 4"
+  script:
+    - export SPACK_DISABLE_LOCAL_CONFIG=1
+    - mkdir -p /p/vast1/${USER}/ci
+    - test -d /p/vast1/${USER}/ci/spack || git clone -c feature.manyFiles=true https://github.com/spack/spack.git /p/vast1/${USER}/ci/spack
+    - test -d /p/vast1/${USER}/ci/spack-packages || git clone -c feature.manyFiles=true https://github.com/spack/spack-packages.git /p/vast1/${USER}/ci/spack-packages
+    - source /p/vast1/${USER}/ci/spack/share/spack/setup-env.sh
+    - spack repo set --dest=/p/vast1/${USER}/ci/spack-packages builtin
+    # - mkdir -p /p/vast1/${USER}/ci/spack-packages/repos/spack_repo/builtin/packages/phloem
+    # - cp ${CI_PROJECT_DIR}/var/spack/package.py /p/vast1/${USER}/ci/spack-packages/repos/spack_repo/builtin/packages/phloem/package.py
+    - mkdir -p /p/vast1/${USER}/ci/spack/var/spack/environments/phloem/stage
+    - cp ${CI_PROJECT_DIR}/.gitlab/ci/spack.yaml /p/vast1/${USER}/ci/spack/var/spack/environments/phloem/spack.yaml
+    - spack env activate phloem
+    # - mkdir -p /p/vast1/${USER}/ci/spack-stage/
+    - spack config add "config:install_tree:root:/p/vast1/${USER}/ci/spack/var/spack/environments/phloem/opt/"
+    - spack config add "config:build_stage:/p/vast1/${USER}/ci/spack/var/spack/environments/phloem/stage"
+    - spack repo add ${CI_PROJECT_DIR}/var/spack_repo/phloem
+    - spack develop --path ${CI_PROJECT_DIR} phloem
+    - spack uninstall -y phloem || true
+    - spack clean phloem
+    - spack concretize --force --fresh
+    - spack install --keep-stage
+  needs: []
+  dependencies: []
+
+test:
+  stage: test
+  tags:
+    - oslic
+    - batch
+  variables:
+    LLNL_SLURM_SCHEDULER_PARAMETERS: "-N 1 -n 4"
+  script:
+    - srun -n 4 ${PREFIX}/bin/mpiBench -p 2 -i 10
+    - srun -n 4 ${PREFIX}/bin/sqmr
+    - srun -n 4 ${PREFIX}/bin/mpiGraph
+    - srun -n 4 ${PREFIX}/bin/com
+  needs:
+    - build
+  dependencies:
+    - build
+
+test_spack:
+  stage: test_spack
+  tags:
+    - oslic
+    - batch
+  variables:
+    LLNL_SLURM_SCHEDULER_PARAMETERS: "-N 1 -n 4"
+  script:
+    # Run the benchmark with a small test case
+    # Assuming 4 processes on a single node
+    - source /p/vast1/${USER}/ci/spack/share/spack/setup-env.sh
+    - spack env activate phloem
+    - srun -n 4 mpiBench -p 2 -i 10
+    - srun -n 4 sqmr
+    - srun -n 4 mpiGraph
+    - srun -n 4 com
+  needs:
+    - build_spack
+  dependencies: []
+
+build_hip:
+  stage: build_hip
+  tags:
+    - tuolumne
+    - batch
+  variables:
+    LLNL_FLUX_SCHEDULER_PARAMETERS: "-qpci -x -N 1 -n 4"
+  script:
+    - git submodule update --init --recursive
+    - mkdir -p build
+    - cmake -B build -C .gitlab/ci/hip/host-config.cmake -DENABLE_HIP=ON -DCMAKE_INSTALL_PREFIX=${PREFIX}
+    - cmake --build build -j
+    - cmake --install build
+  artifacts:
+    paths:
+      - ${PREFIX}/
+    expire_in: 1 day
+  needs: []
+  dependencies: []
+
+test_hip:
+  stage: test_hip
+  tags:
+    - tuolumne
+    - batch
+  variables:
+    LLNL_FLUX_SCHEDULER_PARAMETERS: "-qpci -x -N 1 -n 4"
+  script:
+    - export MPICH_GPU_SUPPORT_ENABLED=1
+    - flux run -n 4 ${PREFIX}/bin/mpiBench -p 2 -i 10
+    - flux run -n 4 ${PREFIX}/bin/sqmr
+    - flux run -n 4 ${PREFIX}/bin/mpiGraph
+    - flux run -n 4 ${PREFIX}/bin/com
+  needs:
+    - build_hip
+  dependencies:
+    - build_hip
+
+build_hip_spack:
+  stage: build_hip_spack
+  tags:
+    - tuolumne
+    - batch
+  variables:
+    LLNL_FLUX_SCHEDULER_PARAMETERS: "-qpci -x -N 1 -n 4"
+  script:
+    - export SPACK_DISABLE_LOCAL_CONFIG=1
+    - mkdir -p /p/vast1/${USER}/ci
+    - test -d /p/vast1/${USER}/ci/spack || git clone -c feature.manyFiles=true https://github.com/spack/spack.git /p/vast1/${USER}/ci/spack
+    - test -d /p/vast1/${USER}/ci/spack-packages || git clone -c feature.manyFiles=true https://github.com/spack/spack-packages.git /p/vast1/${USER}/ci/spack-packages
+    - source /p/vast1/${USER}/ci/spack/share/spack/setup-env.sh
+    - spack repo set --dest=/p/vast1/${USER}/ci/spack-packages builtin
+    - mkdir -p /p/vast1/${USER}/ci/spack/var/spack/environments/phloem-hip/stage
+    - cp ${CI_PROJECT_DIR}/.gitlab/ci/hip/spack.yaml /p/vast1/${USER}/ci/spack/var/spack/environments/phloem-hip/spack.yaml
+    - spack env activate phloem-hip
+    - spack config add "config:install_tree:root:/p/vast1/${USER}/ci/spack/var/spack/environments/phloem-hip/opt/"
+    - spack config add "config:build_stage:/p/vast1/${USER}/ci/spack/var/spack/environments/phloem-hip/stage"
+    - spack repo add ${CI_PROJECT_DIR}/var/spack_repo/phloem
+    - spack develop --path ${CI_PROJECT_DIR} phloem
+    - spack uninstall -y phloem || true
+    - spack clean phloem
+    - spack concretize --force --fresh
+    - spack install --keep-stage
+  needs: []
+  dependencies: []
+
+test_hip_spack:
+  stage: test_hip_spack
+  tags:
+    - tuolumne
+    - batch
+  variables:
+    LLNL_FLUX_SCHEDULER_PARAMETERS: "-qpci -x -N 1 -n 4"
+  script:
+    - export MPICH_GPU_SUPPORT_ENABLED=1
+    - export LD_LIBRARY_PATH=$CRAY_LD_LIBRARY_PATH:$LD_LIBRARY_PATH
+    # Run the benchmark with a small test case
+    # Assuming 4 processes on a single node
+    - source /p/vast1/${USER}/ci/spack/share/spack/setup-env.sh
+    - spack env activate phloem-hip
+    - flux run -n 4 mpiBench -p 2 -i 10
+    - flux run -n 4 sqmr
+    - flux run -n 4 mpiGraph
+    - flux run -n 4 com
+  needs:
+    - build_hip_spack
+  dependencies: []
+
+build_cuda:
+  stage: build_cuda
+  tags:
+    - matrix
+    - batch
+  variables:
+    LLNL_SLURM_SCHEDULER_PARAMETERS: "-N 1 -n 4"
+  script:
+    - git submodule update --init --recursive
+    - module load cmake/3.30.5
+    - cmake -B build -C .gitlab/ci/cuda/host-config.cmake -DENABLE_CUDA=ON -DCMAKE_INSTALL_PREFIX=${PREFIX}
+    - cmake --build build -j
+    - cmake --install build
+  artifacts:
+    paths:
+      - ${PREFIX}/
+    expire_in: 1 day
+  needs: []
+  dependencies: []
+
+test_cuda:
+  stage: test_cuda
+  tags:
+    - matrix
+    - batch
+  variables:
+    LLNL_SLURM_SCHEDULER_PARAMETERS: "-N 1 -n 4"
+    LD_LIBRARY_PATH: "/collab/usr/global/tools/mpi/toss_4_x86_64_ib/mvapich-plus-cuda12.9.1-gnu-5.0.0-1.t4.x86_64/lib:$LD_LIBRARY_PATH"
+  script:
+    - srun -n 4 ${PREFIX}/bin/mpiBench -p 2 -i 10
+    - srun -n 4 ${PREFIX}/bin/sqmr
+    - srun -n 4 ${PREFIX}/bin/mpiGraph
+    - srun -n 4 ${PREFIX}/bin/com
+  needs:
+    - build_cuda
+  dependencies:
+    - build_cuda
+
+build_cuda_spack:
+  stage: build_cuda_spack
+  tags:
+    - matrix
+    - batch
+  variables:
+    LLNL_SLURM_SCHEDULER_PARAMETERS: "-N 1 -n 4"
+  script:
+    - export SPACK_DISABLE_LOCAL_CONFIG=1
+    - mkdir -p /p/vast1/${USER}/ci
+    - test -d /p/vast1/${USER}/ci/spack || git clone -c feature.manyFiles=true https://github.com/spack/spack.git /p/vast1/${USER}/ci/spack
+    - test -d /p/vast1/${USER}/ci/spack-packages || git clone -c feature.manyFiles=true https://github.com/spack/spack-packages.git /p/vast1/${USER}/ci/spack-packages
+    - source /p/vast1/${USER}/ci/spack/share/spack/setup-env.sh
+    - spack repo set --dest=/p/vast1/${USER}/ci/spack-packages builtin
+    - mkdir -p /p/vast1/${USER}/ci/spack/var/spack/environments/phloem-cuda/stage
+    - cp ${CI_PROJECT_DIR}/.gitlab/ci/cuda/spack.yaml /p/vast1/${USER}/ci/spack/var/spack/environments/phloem-cuda/spack.yaml
+    - spack env activate phloem-cuda
+    - spack config add "config:install_tree:root:/p/vast1/${USER}/ci/spack/var/spack/environments/phloem-cuda/opt/"
+    - spack config add "config:build_stage:/p/vast1/${USER}/ci/spack/var/spack/environments/phloem-cuda/stage"
+    - spack repo add ${CI_PROJECT_DIR}/var/spack_repo/phloem
+    - spack develop --path ${CI_PROJECT_DIR} phloem
+    - spack uninstall -y phloem || true
+    - spack clean phloem
+    - spack concretize --force --fresh
+    - spack install --keep-stage
+  needs: []
+  dependencies: []
+
+test_cuda_spack:
+  stage: test_cuda_spack
+  tags:
+    - matrix
+    - batch
+  variables:
+    LLNL_SLURM_SCHEDULER_PARAMETERS: "-N 1 -n 4"
+  script:
+    # Run the benchmark with a small test case
+    # Assuming 4 processes on a single node
+    - source /p/vast1/${USER}/ci/spack/share/spack/setup-env.sh
+    - spack env activate phloem-cuda
+    # - srun -n 4 --mpi=pmix mpiBench -p 2 -i 10 -C -e 4M
+    - srun -n 4 --mpi=pmix mpiBench -p 2 -i 10 -C -e 4M Barrier Bcast Alltoall Allgather Gather Scatter Allreduce Reduce Alltoallv Allgatherv Gatherv Ibcast Ialltoall Iallgather Igather Iscatter Ialltoallv Iallgatherv Igatherv
+    - srun -n 4 --mpi=pmix sqmr
+    - srun -n 4 --mpi=pmix mpiGraph
+    - srun -n 4 --mpi=pmix com
+  needs:
+    - build_cuda_spack
+  dependencies: []

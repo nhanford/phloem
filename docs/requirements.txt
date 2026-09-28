@@ -1,0 +1,7 @@
+Sphinx
+sphinx-rtd-theme
+sphinx-autobuild
+sphinxcontrib-programoutput
+docutils
+doc8
+rstcheck
