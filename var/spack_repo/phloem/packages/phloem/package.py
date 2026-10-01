@@ -15,8 +15,8 @@ from spack.package import *
 class Phloem(CachedCMakePackage, CudaPackage, ROCmPackage):
     """A suite of MPI benchmarks with Umpire memory allocation."""
 
-    homepage = "https://lc.llnl.gov/gitlab/phloem/phloem2"
-    git = "https://lc.llnl.gov/gitlab/phloem/phloem2.git"
+    homepage = "https://github.com/LLNL/phloem"
+    git = "https://github.com/LLNL/phloem/phloem.git"
 
     maintainers("nhanford")
 
