@@ -29,8 +29,8 @@ spack:
   develop:
     phloem:
       spec: phloem@=main
-      path: /workspaces/phloem2
+      path: /workspaces/phloem
   config:
     ccache: false
   repos:
-    phloem: /workspaces/phloem2/var/spack_repo/phloem
+    phloem: /workspaces/phloem/var/spack_repo/phloem
