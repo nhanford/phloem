@@ -26,12 +26,10 @@ jobs:
       - name: Build HTML
         run: cmake --build build/docs --target html
       - run: touch build/docs/_build/html/.nojekyll
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: build/docs/_build/html
-
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
         if: github.ref == 'refs/heads/main'
