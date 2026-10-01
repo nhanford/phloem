@@ -1,0 +1,57 @@
+name: ci
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  merge_group:
+
+concurrency:
+  group: ci-${{github.ref}}-${{github.event.pull_request.number || github.run_number}}
+  cancel-in-progress: true
+
+permissions:
+  pull-requests: read
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs: ${{ steps.filter.outputs.docs }}
+      containers: ${{ steps.filter.outputs.containers }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for file changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            docs:
+              - 'docs/**'
+              - '*.rst'
+            containers:
+              - 'containers/**'
+              - 'Dockerfile*'
+              - '.github/workflows/ci.yml'
+
+  docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    uses: ./.github/workflows/docs.yml
+
+  containers:
+    needs: changes
+    if: needs.changes.outputs.containers == 'true'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/containers.yml

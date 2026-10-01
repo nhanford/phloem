@@ -1,0 +1,36 @@
+spack:
+  specs:
+  - phloem%gcc
+  view: true
+  concretizer:
+    unify: true
+  packages:
+    gmake:
+      externals:
+      - spec: gmake@4.3
+        prefix: /usr
+    gcc:
+      externals:
+      - spec: gcc@14.3.1 languages:='c,c++,fortran'
+        prefix: /usr
+        extra_attributes:
+          compilers:
+            c: /usr/bin/gcc
+            cxx: /usr/bin/g++
+            fortran: /usr/bin/gfortran
+    cmake:
+      externals:
+      - spec: cmake@3.26.5
+        prefix: /usr
+    mpich:
+      externals:
+      - spec: mpich@4.1.2
+        prefix: /usr/lib64/mpich
+  develop:
+    phloem:
+      spec: phloem@=main
+      path: /home/fluxuser/phloem/
+  config:
+    ccache: false
+  repos:
+    phloem: /home/fluxuser/phloem/var/spack_repo/phloem
