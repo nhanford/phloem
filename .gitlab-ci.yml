@@ -29,7 +29,9 @@ build:
     LLNL_SLURM_SCHEDULER_PARAMETERS: "-N 1 -n 4"
     GIT_SUBMODULE_STRATEGY: recursive
   script:
-    - git submodule update --init --recursive
+    - git submodule sync --recursive
+    - git submodule update --init --recursive --depth 0
+    - git submodule status --recursive
     - mkdir -p build
     - cmake -B build -C .gitlab/ci/host-config.cmake -DCMAKE_INSTALL_PREFIX=${PREFIX}
     - cmake --build build -j
