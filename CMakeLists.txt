@@ -25,7 +25,7 @@ if (DEFINED BLT_SOURCE_DIR)
     endif()
 else()
     # Use internal BLT if no BLT_SOURCE_DIR is given
-    set(BLT_SOURCE_DIR "${PROJECT_SOURCE_DIR}/thirdparty/blt" CACHE PATH "")
+    set(BLT_SOURCE_DIR "${CMAKE_SOURCE_DIR}/thirdparty/blt" CACHE PATH "Path to BLT")
     if (NOT EXISTS ${BLT_SOURCE_DIR}/SetupBLT.cmake)
         message(FATAL_ERROR
             "The BLT git submodule is not present. "
