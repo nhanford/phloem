@@ -35,6 +35,7 @@ else()
             "Or add -DBLT_SOURCE_DIR=/path/to/blt to your CMake command." )
     endif()
 endif()
+include(${BLT_SOURCE_DIR}/SetupBLT.cmake)
 include(GNUInstallDirs)
 
 find_package(umpire QUIET)
