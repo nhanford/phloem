@@ -26,6 +26,10 @@ jobs:
       - name: Build HTML
         run: cmake --build build/docs --target html
       - run: touch build/docs/_build/html/.nojekyll
+      - name: Validate Pages artifact
+        run: |
+          test -f build/docs/_build/html/index.html
+          find build/docs/_build/html -maxdepth 1 -type f -print
       - uses: actions/upload-pages-artifact@v5
         with:
           path: build/docs/_build/html

@@ -30,13 +30,14 @@ jobs:
           fetch-depth: 0
 
       - name: Check for file changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
             docs:
               - 'docs/**'
               - '*.rst'
+              - '.github/workflows/docs.yml'
             containers:
               - 'containers/**'
               - 'Dockerfile*'
