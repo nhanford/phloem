@@ -1,6 +1,9 @@
 {
   "name": "Phloem Benchmarks Development",
-  "build": {"dockerfile": "Dockerfile"},
+  "build": {
+    "dockerfile": "../containerfiles/flux/el10/Dockerfile",
+    "context": ".."
+  },
   "remoteUser": "fluxuser",
   "forwardPorts": [8000],
   "portsAttributes": {

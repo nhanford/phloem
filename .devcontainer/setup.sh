@@ -1,7 +1,5 @@
 #!/bin/bash
 set -e
 
-mkdir -p /home/fluxuser/spack/var/spack/environments/phloem/
-ln -sf /workspaces/phloem/.devcontainer/spack.yaml /home/fluxuser/spack/var/spack/environments/phloem/spack.yaml
-
-#cmake -B build -C .devcontainer/host-config.cmake -DDOCS=ON
+mkdir -p /home/fluxuser/opt/spack/var/spack/environments/phloem/
+ln -sf /workspaces/phloem/.devcontainer/spack.yaml /home/fluxuser/opt/spack/var/spack/environments/phloem/spack.yaml
