@@ -56,4 +56,5 @@ node_modules/
 jspm_packages/
 
 # Firewall Certs
-var/certs/
+*.crt
+*.pem
