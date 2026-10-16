@@ -1,0 +1,49 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive  # pulls thirdparty/blt and thirdparty/umpire
+
+      - name: Install Sphinx
+        run: |
+          pip install --upgrade pip
+          pip install -r docs/requirements.txt
+
+      - name: Build manpages
+        run: |
+          cmake -B build -DDOCS=ON
+          cmake --build build --target man
+          mkdir -p share/man/man1
+          cp build/docs/_build/man/*.1 share/man/man1/
+
+      - name: Create source tarball (no thirdparty)
+        run: |
+          git archive --format=tar.gz \
+            --prefix=phloem-${{ github.ref_name }}/ \
+            -o phloem-${{ github.ref_name }}.tar.gz \
+            HEAD
+
+      - name: Create full tarball (with thirdparty)
+        run: |
+          git archive --format=tar.gz \
+            --prefix=phloem-${{ github.ref_name }}/ \
+            -o phloem-${{ github.ref_name }}-full.tar.gz \
+            HEAD \
+            $(git submodule foreach --quiet 'git archive --prefix=$displaypath/ HEAD')
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            phloem-${{ github.ref_name }}.tar.gz
+            phloem-${{ github.ref_name }}-full.tar.gz
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') }}
